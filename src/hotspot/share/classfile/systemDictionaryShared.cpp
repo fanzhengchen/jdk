@@ -655,6 +655,22 @@ static RunTimeSharedDictionary _unregistered_dictionary;
 static RunTimeSharedDictionary _dynamic_builtin_dictionary;
 static RunTimeSharedDictionary _dynamic_unregistered_dictionary;
 
+
+Handle SystemDictionaryShared::create_jar_manifest(const char* manifest_chars, size_t size, TRAPS) {
+  typeArrayOop buf = oopFactory::new_byteArray((int)size, CHECK_NH);
+  typeArrayHandle bufhandle(THREAD, buf);
+  ArrayAccess<>::arraycopy_from_native(reinterpret_cast<const jbyte*>(manifest_chars),
+                                         buf, typeArrayOopDesc::element_offset<jbyte>(0), size);
+  Handle bais = JavaCalls::construct_new_instance(SystemDictionary::ByteArrayInputStream_klass(),
+                      vmSymbols::byte_array_void_signature(),
+                      bufhandle, CHECK_NH);
+  // manifest = new Manifest(ByteArrayInputStream)
+  Handle manifest = JavaCalls::construct_new_instance(SystemDictionary::Jar_Manifest_klass(),
+                      vmSymbols::input_stream_void_signature(),
+                      bais, CHECK_NH);
+  return manifest;
+}
+
 oop SystemDictionaryShared::shared_protection_domain(int index) {
   return ((objArrayOop)_shared_protection_domains.resolve())->obj_at(index);
 }
@@ -671,30 +687,17 @@ Handle SystemDictionaryShared::get_shared_jar_manifest(int shared_path_index, TR
   Handle manifest ;
   if (shared_jar_manifest(shared_path_index) == NULL) {
     SharedClassPathEntry* ent = FileMapInfo::shared_path(shared_path_index);
-    long size = ent->manifest_size();
-    if (size <= 0) {
+    size_t size = (size_t)ent->manifest_size();
+    if (size == 0) {
       return Handle();
     }
 
     // ByteArrayInputStream bais = new ByteArrayInputStream(buf);
     const char* src = ent->manifest();
     assert(src != NULL, "No Manifest data");
-    typeArrayOop buf = oopFactory::new_byteArray(size, CHECK_NH);
-    typeArrayHandle bufhandle(THREAD, buf);
-    ArrayAccess<>::arraycopy_from_native(reinterpret_cast<const jbyte*>(src),
-                                         buf, typeArrayOopDesc::element_offset<jbyte>(0), size);
-
-    Handle bais = JavaCalls::construct_new_instance(SystemDictionary::ByteArrayInputStream_klass(),
-                      vmSymbols::byte_array_void_signature(),
-                      bufhandle, CHECK_NH);
-
-    // manifest = new Manifest(bais)
-    manifest = JavaCalls::construct_new_instance(SystemDictionary::Jar_Manifest_klass(),
-                      vmSymbols::input_stream_void_signature(),
-                      bais, CHECK_NH);
+    manifest = create_jar_manifest(src, size, THREAD);
     atomic_set_shared_jar_manifest(shared_path_index, manifest());
   }
-
   manifest = Handle(THREAD, shared_jar_manifest(shared_path_index));
   assert(manifest.not_null(), "sanity");
   return manifest;
@@ -1201,8 +1204,10 @@ void SystemDictionaryShared::set_shared_class_misc_info(InstanceKlass* k, ClassF
   Arguments::assert_is_dumping_archive();
   assert(!is_builtin(k), "must be unregistered class");
   DumpTimeSharedClassInfo* info = find_or_allocate_info_for(k);
-  info->_clsfile_size  = cfs->length();
-  info->_clsfile_crc32 = ClassLoader::crc32(0, (const char*)cfs->buffer(), cfs->length());
+  if (info != NULL) {
+    info->_clsfile_size  = cfs->length();
+    info->_clsfile_crc32 = ClassLoader::crc32(0, (const char*)cfs->buffer(), cfs->length());
+  }
 }
 
 void SystemDictionaryShared::init_dumptime_info(InstanceKlass* k) {
@@ -1398,12 +1403,16 @@ void SystemDictionaryShared::check_excluded_classes() {
 bool SystemDictionaryShared::is_excluded_class(InstanceKlass* k) {
   assert(_no_class_loading_should_happen, "sanity");
   Arguments::assert_is_dumping_archive();
-  return find_or_allocate_info_for(k)->is_excluded();
+  DumpTimeSharedClassInfo* p = find_or_allocate_info_for(k);
+  return (p == NULL) ? true : p->is_excluded();
 }
 
 void SystemDictionaryShared::set_class_has_failed_verification(InstanceKlass* ik) {
   Arguments::assert_is_dumping_archive();
-  find_or_allocate_info_for(ik)->set_failed_verification();
+  DumpTimeSharedClassInfo* p = find_or_allocate_info_for(ik);
+  if (p != NULL) {
+    p->set_failed_verification();
+  }
 }
 
 bool SystemDictionaryShared::has_class_failed_verification(InstanceKlass* ik) {
@@ -1440,9 +1449,12 @@ bool SystemDictionaryShared::add_verification_constraint(InstanceKlass* k, Symbo
          Symbol* from_name, bool from_field_is_protected, bool from_is_array, bool from_is_object) {
   Arguments::assert_is_dumping_archive();
   DumpTimeSharedClassInfo* info = find_or_allocate_info_for(k);
-  info->add_verification_constraint(k, name, from_name, from_field_is_protected,
-                                    from_is_array, from_is_object);
-
+  if (info != NULL) {
+    info->add_verification_constraint(k, name, from_name, from_field_is_protected,
+                                      from_is_array, from_is_object);
+  } else {
+    return true;
+  }
   if (DynamicDumpSharedSpaces) {
     // For dynamic dumping, we can resolve all the constraint classes for all class loaders during
     // the initial run prior to creating the archive before vm exit. We will also perform verification
@@ -1607,8 +1619,7 @@ InstanceKlass* SystemDictionaryShared::prepare_shared_lambda_proxy_class(Instanc
   loaded_lambda->link_class(CHECK_NULL);
   // notify jvmti
   if (JvmtiExport::should_post_class_load()) {
-    assert(THREAD->is_Java_thread(), "thread->is_Java_thread()");
-    JvmtiExport::post_class_load((JavaThread *) THREAD, loaded_lambda);
+    JvmtiExport::post_class_load(THREAD->as_Java_thread(), loaded_lambda);
   }
   if (class_load_start_event.should_commit()) {
     SystemDictionary::post_class_load_event(&class_load_start_event, loaded_lambda, ClassLoaderData::class_loader_data(class_loader()));
@@ -1771,7 +1782,9 @@ void SystemDictionaryShared::record_linking_constraint(Symbol* name, InstanceKla
   }
   Arguments::assert_is_dumping_archive();
   DumpTimeSharedClassInfo* info = find_or_allocate_info_for(klass);
-  info->record_linking_constraint(name, loader1, loader2);
+  if (info != NULL) {
+    info->record_linking_constraint(name, loader1, loader2);
+  }
 }
 
 // returns true IFF there's no need to re-initialize the i/v-tables for klass for

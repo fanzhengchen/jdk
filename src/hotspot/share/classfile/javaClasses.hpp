@@ -28,6 +28,7 @@
 #include "classfile/systemDictionary.hpp"
 #include "jvmtifiles/jvmti.h"
 #include "oops/oop.hpp"
+#include "oops/instanceKlass.hpp"
 #include "runtime/os.hpp"
 
 class RecordComponent;
@@ -796,6 +797,7 @@ class java_lang_Module {
     static void set_name(oop module, oop value);
 
     static ModuleEntry* module_entry(oop module);
+    static ModuleEntry* module_entry_raw(oop module);
     static void set_module_entry(oop module, ModuleEntry* module_entry);
 
   friend class JavaClasses;
@@ -1133,7 +1135,11 @@ class java_lang_invoke_MemberName: AllStatic {
     MN_NESTMATE_CLASS        = 0x00000001,
     MN_HIDDEN_CLASS          = 0x00000002,
     MN_STRONG_LOADER_LINK    = 0x00000004,
-    MN_ACCESS_VM_ANNOTATIONS = 0x00000008
+    MN_ACCESS_VM_ANNOTATIONS = 0x00000008,
+    // Lookup modes
+    MN_MODULE_MODE           = 0x00000010,
+    MN_UNCONDITIONAL_MODE    = 0x00000020,
+    MN_TRUSTED_MODE          = -1
   };
 
   // Accessors for code generation:

@@ -81,7 +81,7 @@ public interface DocTreeFactory {
     /**
      * Creates a new {@code AttributeTree} object, to represent an HTML attribute in an HTML tag.
      * @param name  the name of the attribute
-     * @param vkind the kind of attribute value
+     * @param vkind the kind of the attribute value
      * @param value the value, if any, of the attribute
      * @return an {@code AttributeTree} object
      */
@@ -137,7 +137,7 @@ public interface DocTreeFactory {
                                      List<? extends DocTree> preamble,
                                      List<? extends DocTree> postamble);
     /**
-     * Creates a new {@code DocRootTree} object, to represent an {@code {@docroot}} tag.
+     * Creates a new {@code DocRootTree} object, to represent an {@code {@docRoot}} tag.
      * @return a {@code DocRootTree} object
      */
     DocRootTree newDocRootTree();

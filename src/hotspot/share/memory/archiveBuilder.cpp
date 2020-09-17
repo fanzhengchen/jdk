@@ -23,11 +23,13 @@
  */
 
 #include "precompiled.hpp"
+#include "classfile/classLoaderDataShared.hpp"
 #include "classfile/systemDictionaryShared.hpp"
 #include "logging/log.hpp"
 #include "logging/logMessage.hpp"
 #include "memory/archiveBuilder.hpp"
 #include "memory/archiveUtils.hpp"
+#include "memory/cppVtables.hpp"
 #include "memory/dumpAllocStats.hpp"
 #include "memory/metaspaceShared.hpp"
 #include "memory/resourceArea.hpp"
@@ -157,6 +159,10 @@ ArchiveBuilder::~ArchiveBuilder() {
 
   clean_up_src_obj_table();
 
+  for (int i = 0; i < _symbols->length(); i++) {
+    _symbols->at(i)->decrement_refcount();
+  }
+
   delete _klasses;
   delete _symbols;
   delete _special_refs;
@@ -197,7 +203,10 @@ bool ArchiveBuilder::gather_klass_and_symbol(MetaspaceClosure::Ref* ref, bool re
     }
     _estimated_metsapceobj_bytes += BytesPerWord; // See RunTimeSharedClassInfo::get_for()
   } else if (ref->msotype() == MetaspaceObj::SymbolType) {
-    _symbols->append((Symbol*)ref->obj());
+    // Make sure the symbol won't be GC'ed while we are dumping the archive.
+    Symbol* sym = (Symbol*)ref->obj();
+    sym->increment_refcount();
+    _symbols->append(sym);
   }
 
   int bytes = ref->size() * BytesPerWord;
@@ -211,6 +220,11 @@ void ArchiveBuilder::gather_klasses_and_symbols() {
   log_info(cds)("Gathering classes and symbols ... ");
   GatherKlassesAndSymbols doit(this);
   iterate_roots(&doit, /*is_relocating_pointers=*/false);
+#if INCLUDE_CDS_JAVA_HEAP
+  if (DumpSharedSpaces && MetaspaceShared::use_full_module_graph()) {
+    ClassLoaderDataShared::iterate_symbols(&doit);
+  }
+#endif
   doit.finish();
 
   log_info(cds)("Number of classes %d", _num_instance_klasses + _num_obj_array_klasses + _num_type_array_klasses);
@@ -274,9 +288,13 @@ void ArchiveBuilder::sort_klasses() {
 void ArchiveBuilder::iterate_sorted_roots(MetaspaceClosure* it, bool is_relocating_pointers) {
   int i;
 
-  int num_symbols = _symbols->length();
-  for (i = 0; i < num_symbols; i++) {
-    it->push(&_symbols->at(i));
+  if (!is_relocating_pointers) {
+    // Don't relocate _symbol, so we can safely call decrement_refcount on the
+    // original symbols.
+    int num_symbols = _symbols->length();
+    for (i = 0; i < num_symbols; i++) {
+      it->push(&_symbols->at(i));
+    }
   }
 
   int num_klasses = _klasses->length();
@@ -322,14 +340,12 @@ bool ArchiveBuilder::gather_one_source_obj(MetaspaceClosure::Ref* enclosing_ref,
 
   FollowMode follow_mode = get_follow_mode(ref);
   SourceObjInfo src_info(ref, read_only, follow_mode);
-  bool created = false;
-  SourceObjInfo* p = _src_obj_table.lookup(src_obj);
-  if (p == NULL) {
-    p = _src_obj_table.add(src_obj, src_info);
+  bool created;
+  SourceObjInfo* p = _src_obj_table.add_if_absent(src_obj, src_info, &created);
+  if (created) {
     if (_src_obj_table.maybe_grow(MAX_TABLE_SIZE)) {
       log_info(cds, hashtables)("Expanded _src_obj_table table to %d", _src_obj_table.table_size());
     }
-    created = true;
   }
 
   assert(p->read_only() == src_info.read_only(), "must be");
@@ -464,7 +480,7 @@ void ArchiveBuilder::make_shallow_copy(DumpRegion *dump_region, SourceObjInfo* s
 
   memcpy(dest, src, bytes);
 
-  intptr_t* archived_vtable = MetaspaceShared::get_archived_cpp_vtable(ref->msotype(), (address)dest);
+  intptr_t* archived_vtable = CppVtables::get_archived_cpp_vtable(ref->msotype(), (address)dest);
   if (archived_vtable != NULL) {
     *(address*)dest = (address)archived_vtable;
     ArchivePtrMarker::mark_pointer((address*)dest);

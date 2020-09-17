@@ -130,6 +130,7 @@
   template(java_lang_Record,                          "java/lang/Record")                         \
                                                                                                   \
   template(jdk_internal_loader_NativeLibraries,       "jdk/internal/loader/NativeLibraries")      \
+  template(jdk_internal_loader_BuiltinClassLoader,    "jdk/internal/loader/BuiltinClassLoader")   \
   template(jdk_internal_loader_ClassLoaders_AppClassLoader,      "jdk/internal/loader/ClassLoaders$AppClassLoader")      \
   template(jdk_internal_loader_ClassLoaders_PlatformClassLoader, "jdk/internal/loader/ClassLoaders$PlatformClassLoader") \
                                                                                                   \
@@ -664,6 +665,8 @@
                                                                                                                   \
   /* cds */                                                                                                       \
   template(jdk_internal_loader_ClassLoaders,       "jdk/internal/loader/ClassLoaders")                            \
+  template(java_util_concurrent_ConcurrentHashMap, "java/util/concurrent/ConcurrentHashMap")                      \
+  template(java_util_ArrayList,                    "java/util/ArrayList")                                         \
   template(toFileURL_name,                         "toFileURL")                                                   \
   template(toFileURL_signature,                    "(Ljava/lang/String;)Ljava/net/URL;")                          \
   template(url_void_signature,                     "(Ljava/net/URL;)V")                                           \
@@ -779,6 +782,8 @@
   do_name(negateExact_name,"negateExact")                                                                               \
   do_name(subtractExact_name,"subtractExact")                                                                           \
   do_name(fma_name, "fma")                                                                                              \
+  do_name(copySign_name, "copySign")                                                                                    \
+  do_name(signum_name,"signum")                                                                                         \
                                                                                                                         \
   do_intrinsic(_dabs,                     java_lang_Math,         abs_name,   double_double_signature,           F_S)   \
   do_intrinsic(_fabs,                     java_lang_Math,         abs_name,   float_float_signature,           F_S)   \
@@ -817,6 +822,10 @@
   do_intrinsic(_minF,                     java_lang_Math,         min_name,           float2_float_signature,    F_S)   \
   do_intrinsic(_maxD,                     java_lang_Math,         max_name,           double2_double_signature,  F_S)   \
   do_intrinsic(_minD,                     java_lang_Math,         min_name,           double2_double_signature,  F_S)   \
+  do_intrinsic(_dcopySign,                java_lang_Math,         copySign_name,      double2_double_signature,  F_S)   \
+  do_intrinsic(_fcopySign,                java_lang_Math,         copySign_name,      float2_float_signature,    F_S)   \
+  do_intrinsic(_dsignum,                  java_lang_Math,         signum_name,        double_double_signature,   F_S)   \
+  do_intrinsic(_fsignum,                  java_lang_Math,         signum_name,        float_float_signature,     F_S)   \
                                                                                                                         \
   do_intrinsic(_floatToRawIntBits,        java_lang_Float,        floatToRawIntBits_name,   float_int_signature, F_S)   \
    do_name(     floatToRawIntBits_name,                          "floatToRawIntBits")                                   \

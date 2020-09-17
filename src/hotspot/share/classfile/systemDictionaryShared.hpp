@@ -26,7 +26,6 @@
 #define SHARE_CLASSFILE_SYSTEMDICTIONARYSHARED_HPP
 
 #include "oops/klass.hpp"
-#include "classfile/dictionary.hpp"
 #include "classfile/packageEntry.hpp"
 #include "classfile/systemDictionary.hpp"
 #include "memory/filemap.hpp"
@@ -103,6 +102,7 @@
 #define UNREGISTERED_INDEX -9999
 
 class ClassFileStream;
+class Dictionary;
 class DumpTimeSharedClassInfo;
 class DumpTimeSharedClassTable;
 class LambdaProxyClassDictionary;
@@ -320,6 +320,7 @@ public:
   static void print_table_statistics(outputStream* st) NOT_CDS_RETURN;
   static bool empty_dumptime_table() NOT_CDS_RETURN_(true);
   static void start_dumping() NOT_CDS_RETURN;
+  static Handle create_jar_manifest(const char* man, size_t size, TRAPS) NOT_CDS_RETURN_(Handle());
 
   DEBUG_ONLY(static bool no_class_loading_should_happen() {return _no_class_loading_should_happen;})
 
